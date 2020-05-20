@@ -45,7 +45,7 @@ def select_n_feature(data, n):
     return [k for k in list(sorted_wordDict)[100:n+100]]
 
 
-def transform(text, feature):
+def transform(text, rating, feature):
     matrix = np.zeros((len(text), len(feature)))
 
     for i in range(len(text)):
@@ -85,18 +85,44 @@ params = {
     'class_weight': ['balanced', {'0': 10, '1': 1}, {'0': 30, '1': 1}, {'0': 50, '1': 1}]
 }
 
-rf = BalancedRandomForestClassifier(random_state=0)
+from imblearn.over_sampling import SMOTE
+
+ovr = SMOTE(sampling_strategy=0.5, random_state = 42)
+
+train_text_one, train_label_one = ovr.fit_resample(train_text[:50000], train_label[:50000])
+train_text_two, train_label_two = ovr.fit_resample(train_text[50000:100000], train_label[50000:100000])
+train_text_three, train_label_three = ovr.fit_resample(train_text[100000:150000], train_label[100000:150000])
+train_text_four, train_label_four = ovr.fit_resample(train_text[150000:200000], train_label[150000:200000])
+train_text_five, train_label_five = ovr.fit_resample(train_text[200000:], train_label[200000:])
+
+train_resample_text = np.concatenate((train_text_one, train_text_two, train_text_three, train_text_four, train_text_five))
+train_resample_label = np.concatenate((train_label_one, train_label_two, train_label_three, train_label_four, train_label_five))
+
+# baseline
+rf = RandomForestClassifier(random_state=0)
 rf.fit(train_text, train_label)
 pred = rf.predict_proba(dev_text)
 print("AUROC:", roc_auc_score(dev_label, pred[:, 1]))
 print("AP:", average_precision_score(dev_label, pred[:, 1], pos_label="1"))
 
-for (k, values) in params.items():
-    for v in values:
-        print(k, v)
-        rf = BalancedRandomForestClassifier(random_state=0)
-        rf.set_params({k: v})
-        rf.fit(train_text, train_label)
-        pred = rf.predict_proba(dev_text)
-        print("AUROC:", roc_auc_score(dev_label, pred[:, 1]))
-        print("AP:", average_precision_score(dev_label, pred[:, 1], pos_label="1"))
+# baseline with oversampling
+rf = RandomForestClassifier(random_state=0)
+rf.fit(train_resample_text, train_resample_label)
+pred = rf.predict_proba(dev_text)
+print("AUROC:", roc_auc_score(dev_label, pred[:, 1]))
+print("AP:", average_precision_score(dev_label, pred[:, 1], pos_label="1"))
+
+# hyperparameter tuning
+cv = RandomForestClassifier(random_state=0, n_estimators=200, max_depth=90, min_samples_split=5, min_samples_leaf=5, max_features='log2', class_weight='balanced')
+cv.fit(train_text, train_label)
+pred = cv.predict_proba(dev_text)
+print("Original Dev auROC:", roc_auc_score(dev_label, pred[:, 1]))
+print("Original Dev AP:", average_precision_score(dev_label, pred[:, 1], pos_label="1"))_
+
+# hyperparameter tuning with oversampling
+cv = RandomForestClassifier(random_state=0, n_estimators=200, max_depth=90, min_samples_split=5, min_samples_leaf=5, max_features='log2', class_weight='balanced')
+cv.fit(train_resample_text, train_resample_label)
+pred = cv.predict_proba(dev_text)
+print("Original Dev auROC:", roc_auc_score(dev_label, pred[:, 1]))
+print("Original Dev AP:", average_precision_score(dev_label, pred[:, 1], pos_label="1"))_
+
